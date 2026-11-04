@@ -1,0 +1,6 @@
+core/target/
+app/CamBooth.xcodeproj/
+app/CamBooth/Info.plist
+app/CamBooth/CamBooth.entitlements
+app/build/
+.DS_Store

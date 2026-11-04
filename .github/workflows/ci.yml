@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    name: Rust core (Linux)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo test
+      - run: cargo clippy --all-targets -- -D warnings
+
+  app:
+    name: macOS app build
+    runs-on: macos-15
+    needs: core
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Build universal Rust static library
+        working-directory: core
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p target/universal
+          lipo -create \
+            target/aarch64-apple-darwin/release/libcambooth_core.a \
+            target/x86_64-apple-darwin/release/libcambooth_core.a \
+            -output target/universal/libcambooth_core.a
+      - name: Generate Xcode project
+        working-directory: app
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build app
+        working-directory: app
+        run: |
+          xcodebuild -project CamBooth.xcodeproj -scheme CamBooth \
+            -configuration Release -derivedDataPath build \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO build
+      - name: Package
+        run: ditto -c -k --keepParent "app/build/Build/Products/Release/Cam Booth.app" CamBooth.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CamBooth-macOS
+          path: CamBooth.zip

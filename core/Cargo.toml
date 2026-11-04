@@ -1,0 +1,19 @@
+[package]
+name = "cambooth-core"
+version = "0.1.0"
+edition = "2021"
+description = "Cam Booth core: small, dependency-free logic exposed to Swift over a C ABI"
+publish = false
+
+[lib]
+name = "cambooth_core"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
