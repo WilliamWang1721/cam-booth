@@ -174,9 +174,9 @@ final class CameraModel: NSObject, ObservableObject {
                     c.automaticallyAdjustsVideoMirroring = false
                     c.isVideoMirrored = mirror
                 }
-                if hevc, self.movieOutput.availableVideoCodecTypes.contains(.hevc) {
-                    self.movieOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.hevc], for: c)
-                }
+                // macOS 14+ hardware encodes both; macOS has no `availableVideoCodecTypes`.
+                let codec: AVVideoCodecType = hevc ? .hevc : .h264
+                self.movieOutput.setOutputSettings([AVVideoCodecKey: codec], for: c)
             }
             self.movieOutput.startRecording(to: url, recordingDelegate: self)
         }
