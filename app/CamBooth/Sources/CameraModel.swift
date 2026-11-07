@@ -52,7 +52,7 @@ final class CameraModel: NSObject, ObservableObject {
     private var recordingStart = Date()
     private var countdownTimer: Timer?
     private var countdownAction: (() -> Void)?
-    private var pendingPhotoURLs: [Int: URL] = [:]      // read/written on `queue` only
+    private var pendingPhotoURLs: [Int64: URL] = [:]    // read/written on `queue` only
     private var reservedNames: Set<String> = []         // names handed out but not yet on disk
 
     // Idle sleep
@@ -548,10 +548,11 @@ final class CameraModel: NSObject, ObservableObject {
 
 extension CameraModel: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        let identifier = photo.settings.uniqueID as Int64
         // The delegate runs on AVFoundation's own queue; hop to ours to read the pending names safely.
         queue.async {
             guard let url = self.pendingPhotoURLs.removeValue(
-                    forKey: photo.settings.uniqueID) else {
+                    forKey: identifier) else {
                 if let error { self.report("拍照失败：\(error.localizedDescription)") }
                 return
             }
