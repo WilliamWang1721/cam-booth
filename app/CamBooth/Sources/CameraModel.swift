@@ -82,24 +82,24 @@ final class CameraModel: NSObject, ObservableObject {
     @Published var mirrored: Bool {
         didSet {
             guard mirrored != oldValue else { return }
-            UserDefaults.standard.set(newValue, forKey: Keys.mirrored)
-            applyMirroring(newValue)
+            UserDefaults.standard.set(mirrored, forKey: Keys.mirrored)
+            applyMirroring(mirrored)
         }
     }
     @Published var useHEVC: Bool {
-        didSet { UserDefaults.standard.set(newValue, forKey: Keys.hevc) }
+        didSet { UserDefaults.standard.set(useHEVC, forKey: Keys.hevc) }
     }
     @Published var countdownSeconds: Int {
-        didSet { UserDefaults.standard.set(newValue, forKey: Keys.countdown) }
+        didSet { UserDefaults.standard.set(countdownSeconds, forKey: Keys.countdown) }
     }
     @Published var videoFormat: VideoFormat {
         didSet {
-            UserDefaults.standard.set(newValue.rawValue, forKey: Keys.exportFormat)
+            UserDefaults.standard.set(videoFormat.rawValue, forKey: Keys.exportFormat)
         }
     }
     @Published var sleepAfterSeconds: Int {
         didSet {
-            UserDefaults.standard.set(newValue, forKey: Keys.sleepAfter)
+            UserDefaults.standard.set(sleepAfterSeconds, forKey: Keys.sleepAfter)
             resetIdleClock()
         }
     }
@@ -394,7 +394,7 @@ final class CameraModel: NSObject, ObservableObject {
         queue.async {
             self.applyMirroringLocked(mirror)
             let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-            self.pendingPhotoURLs[settings.photoSettingsIdentifier] = self.reserveURL(kind: .photo)
+            self.pendingPhotoURLs[settings.uniqueID] = self.reserveURL(kind: .photo)
             self.photoOutput.capturePhoto(with: settings, delegate: self)
         }
     }
@@ -551,7 +551,7 @@ extension CameraModel: AVCapturePhotoCaptureDelegate {
         // The delegate runs on AVFoundation's own queue; hop to ours to read the pending names safely.
         queue.async {
             guard let url = self.pendingPhotoURLs.removeValue(
-                    forKey: photo.settings.photoSettingsIdentifier) else {
+                    forKey: photo.settings.uniqueID) else {
                 if let error { self.report("拍照失败：\(error.localizedDescription)") }
                 return
             }

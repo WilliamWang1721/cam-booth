@@ -23,7 +23,7 @@ enum CountdownSound {
             player.play()
             return
         }
-        guard let player = AVAudioPlayer(data: wav(kind)) else { return }
+        guard let player = try? AVAudioPlayer(data: wav(kind)) else { return }
         player.prepareToPlay()
         players[key] = player
         player.play()

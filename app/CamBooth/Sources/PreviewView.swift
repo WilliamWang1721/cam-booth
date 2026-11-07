@@ -12,7 +12,7 @@ struct PreviewView: NSViewRepresentable {
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspect
         // Preview and saved file must agree on orientation (see CameraModel.fixOrientationLocked).
-        view.previewLayer.connection.videoOrientation = .landscapeRight
+        view.previewLayer.connection?.videoOrientation = .landscapeRight
         return view
     }
 
