@@ -11,6 +11,44 @@ use std::os::raw::c_char;
 pub const KIND_PHOTO: i32 = 0;
 pub const KIND_VIDEO: i32 = 1;
 
+/// Export formats the user can pick in 高级设置. The raw value is the file
+/// extension; `fileType` is the `AVFileType` identifier AVFoundation writes,
+/// and `utils` is what we hand to `avconvert`. Keep all three in agreement.
+pub const FMT_MOV: i32 = 0;
+pub const FMT_MP4: i32 = 1;
+pub const FMT_HEVC: i32 = 2;
+pub const FMT_M4V: i32 = 3;
+
+fn video_extension(format: i32) -> Option<&'static str> {
+    match format {
+        FMT_MOV => Some("mov"),
+        FMT_MP4 => Some("mp4"),
+        FMT_HEVC => Some("hevc"),
+        FMT_M4V => Some("m4v"),
+        _ => None,
+    }
+}
+
+fn file_type(format: i32) -> Option<&'static str> {
+    match format {
+        FMT_MOV => Some("public.quicktime-movie"),
+        FMT_MP4 => Some("public.mpeg-4-movie"),
+        FMT_HEVC => Some("public.hevc-movie"),
+        FMT_M4V => Some("public.mpeg-4-video"),
+        _ => None,
+    }
+}
+
+fn avconvert_preset(format: i32) -> Option<&'static str> {
+    match format {
+        FMT_MOV => Some("PresetQuickTimeMovie"),
+        FMT_MP4 => Some("PresetHighestQuality"),
+        FMT_HEVC => Some("PresetHEVC1920x1080"),
+        FMT_M4V => Some("PresetAppleM4VHD720p"),
+        _ => None,
+    }
+}
+
 /// Days since 1970-01-01 -> (year, month, day), proleptic Gregorian.
 /// Howard Hinnant's `civil_from_days`.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
@@ -26,13 +64,7 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (y, m, d)
 }
 
-/// "Cam Booth 2026-11-03 at 13.46.20.mov" (same shape macOS uses for its own captures).
-pub fn output_filename(kind: i32, unix_secs: i64, tz_offset_secs: i32) -> Option<String> {
-    let ext = match kind {
-        KIND_PHOTO => "jpg",
-        KIND_VIDEO => "mov",
-        _ => return None,
-    };
+fn output_filename_with_ext(ext: &str, unix_secs: i64, tz_offset_secs: i32) -> Option<String> {
     let local = unix_secs.checked_add(i64::from(tz_offset_secs))?;
     let (y, mo, d) = civil_from_days(local.div_euclid(86_400));
     let sod = local.rem_euclid(86_400);
@@ -40,6 +72,17 @@ pub fn output_filename(kind: i32, unix_secs: i64, tz_offset_secs: i32) -> Option
     Some(format!(
         "Cam Booth {y:04}-{mo:02}-{d:02} at {h:02}.{mi:02}.{s:02}.{ext}"
     ))
+}
+
+/// "Cam Booth 2026-11-03 at 13.46.20.mov" (same shape macOS uses for its own captures).
+/// `format` selects the video extension; photos always use "jpg".
+pub fn output_filename(kind: i32, format: i32, unix_secs: i64, tz_offset_secs: i32) -> Option<String> {
+    let ext = match kind {
+        KIND_PHOTO => "jpg",
+        KIND_VIDEO => video_extension(format)?,
+        _ => return None,
+    };
+    output_filename_with_ext(ext, unix_secs, tz_offset_secs)
 }
 
 /// "00:07", "12:34", "1:02:03".
@@ -72,13 +115,38 @@ unsafe fn write_cstr(s: &str, buf: *mut c_char, cap: usize) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn cb_output_filename(
     kind: i32,
+    format: i32,
     unix_secs: i64,
     tz_offset_secs: i32,
     buf: *mut c_char,
     cap: usize,
 ) -> i32 {
-    match output_filename(kind, unix_secs, tz_offset_secs) {
+    match output_filename(kind, format, unix_secs, tz_offset_secs) {
         Some(name) => write_cstr(&name, buf, cap),
+        None => -1,
+    }
+}
+
+/// AVFileType identifier (e.g. "public.mpeg-4-movie") for a video format, -1 if unknown.
+///
+/// # Safety
+/// `buf` must be null or valid for writes of `cap` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn cb_video_file_type(format: i32, buf: *mut c_char, cap: usize) -> i32 {
+    match file_type(format) {
+        Some(s) => write_cstr(s, buf, cap),
+        None => -1,
+    }
+}
+
+/// avconvert preset name for a video format, -1 if unknown.
+///
+/// # Safety
+/// `buf` must be null or valid for writes of `cap` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn cb_video_preset(format: i32, buf: *mut c_char, cap: usize) -> i32 {
+    match avconvert_preset(format) {
+        Some(s) => write_cstr(s, buf, cap),
         None => -1,
     }
 }
@@ -98,7 +166,7 @@ mod tests {
     #[test]
     fn epoch() {
         assert_eq!(
-            output_filename(KIND_VIDEO, 0, 0).unwrap(),
+            output_filename(KIND_VIDEO, FMT_MOV, 0, 0).unwrap(),
             "Cam Booth 1970-01-01 at 00.00.00.mov"
         );
     }
@@ -107,17 +175,17 @@ mod tests {
     fn known_timestamps() {
         // 2001-09-09 01:46:40 UTC
         assert_eq!(
-            output_filename(KIND_PHOTO, 1_000_000_000, 0).unwrap(),
+            output_filename(KIND_PHOTO, FMT_MOV, 1_000_000_000, 0).unwrap(),
             "Cam Booth 2001-09-09 at 01.46.40.jpg"
         );
         // same instant at UTC+8
         assert_eq!(
-            output_filename(KIND_PHOTO, 1_000_000_000, 8 * 3_600).unwrap(),
+            output_filename(KIND_PHOTO, FMT_MOV, 1_000_000_000, 8 * 3_600).unwrap(),
             "Cam Booth 2001-09-09 at 09.46.40.jpg"
         );
         // leap day: 2000-02-29 00:00:00 UTC
         assert_eq!(
-            output_filename(KIND_VIDEO, 951_782_400, 0).unwrap(),
+            output_filename(KIND_VIDEO, FMT_MOV, 951_782_400, 0).unwrap(),
             "Cam Booth 2000-02-29 at 00.00.00.mov"
         );
     }
@@ -125,19 +193,41 @@ mod tests {
     #[test]
     fn before_epoch_and_day_rollover() {
         assert_eq!(
-            output_filename(KIND_VIDEO, -1, 0).unwrap(),
+            output_filename(KIND_VIDEO, FMT_MOV, -1, 0).unwrap(),
             "Cam Booth 1969-12-31 at 23.59.59.mov"
         );
         // 23:00 UTC at UTC+2 is 01:00 the next day
         assert_eq!(
-            output_filename(KIND_VIDEO, 82_800, 2 * 3_600).unwrap(),
+            output_filename(KIND_VIDEO, FMT_MOV, 82_800, 2 * 3_600).unwrap(),
             "Cam Booth 1970-01-02 at 01.00.00.mov"
         );
     }
 
     #[test]
     fn bad_kind() {
-        assert!(output_filename(7, 0, 0).is_none());
+        assert!(output_filename(7, FMT_MOV, 0, 0).is_none());
+        assert!(output_filename(KIND_VIDEO, 99, 0, 0).is_none());
+    }
+
+    #[test]
+    fn formats() {
+        // Each format changes only the extension.
+        for (fmt, ext, ty, preset) in [
+            (FMT_MOV, "mov", "public.quicktime-movie", "PresetQuickTimeMovie"),
+            (FMT_MP4, "mp4", "public.mpeg-4-movie", "PresetHighestQuality"),
+            (FMT_HEVC, "hevc", "public.hevc-movie", "PresetHEVC1920x1080"),
+            (FMT_M4V, "m4v", "public.mpeg-4-video", "PresetAppleM4VHD720p"),
+        ] {
+            assert_eq!(
+                output_filename(KIND_VIDEO, fmt, 0, 0).unwrap(),
+                format!("Cam Booth 1970-01-01 at 00.00.00.{ext}")
+            );
+            assert_eq!(file_type(fmt), Some(ty));
+            assert_eq!(avconvert_preset(fmt), Some(preset));
+        }
+        assert_eq!(file_type(99), None);
+        assert_eq!(avconvert_preset(99), None);
+        assert_eq!(video_extension(99), None);
     }
 
     #[test]
@@ -164,7 +254,16 @@ mod tests {
         assert_eq!(unsafe { cb_format_duration(7_000, ok.as_mut_ptr(), 6) }, 5);
         assert_eq!(unsafe { cb_format_duration(7_000, std::ptr::null_mut(), 64) }, -1);
         assert_eq!(
-            unsafe { cb_output_filename(9, 0, 0, buf.as_mut_ptr(), buf.len()) },
+            unsafe { cb_output_filename(9, FMT_MOV, 0, 0, buf.as_mut_ptr(), buf.len()) },
+            -1
+        );
+        // format now threads through the FFI
+        let n = unsafe { cb_output_filename(KIND_VIDEO, FMT_MP4, 0, 0, buf.as_mut_ptr(), buf.len()) };
+        assert_eq!(n, 36);
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();
+        assert_eq!(s, "Cam Booth 1970-01-01 at 00.00.00.mp4");
+        assert_eq!(
+            unsafe { cb_video_file_type(99, buf.as_mut_ptr(), buf.len()) },
             -1
         );
     }

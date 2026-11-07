@@ -11,12 +11,22 @@ struct PreviewView: NSViewRepresentable {
         let view = PreviewNSView()
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspect
+        // Preview and saved file must agree on orientation (see CameraModel.fixOrientationLocked).
+        view.previewLayer.connection.videoOrientation = .landscapeRight
         return view
     }
 
     func updateNSView(_ view: PreviewNSView, context: Context) {
-        // A layer transform is free (GPU) and works before the connection exists.
-        view.previewLayer.transform = mirrored ? CATransform3DMakeScale(-1, 1, 1) : CATransform3DIdentity
+        // Mirroring is applied on the capture connections in CameraModel (on the
+        // session queue, inside its configuration blocks), so the preview layer
+        // mirrors for free through the connection. Writing the connection here
+        // would race those writes from the main thread; the transform below is
+        // only a fallback for preview connections that do not support mirroring.
+        if let connection = view.previewLayer.connection, connection.isVideoMirroringSupported {
+            view.previewLayer.transform = CATransform3DIdentity
+        } else {
+            view.previewLayer.transform = mirrored ? CATransform3DMakeScale(-1, 1, 1) : CATransform3DIdentity
+        }
     }
 }
 
