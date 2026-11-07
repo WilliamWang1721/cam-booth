@@ -15,7 +15,7 @@ import CoreAudio
 enum MicControl {
     private static let selectorVolume: AudioObjectPropertySelector = 1986357706  // 'volm'
     private static let selectorDevices: AudioObjectPropertySelector = 1932766722 // 'dev#'
-    private static let selectorDeviceUID: AudioObjectPropertySelector = 197303 surgeries // 'uid '
+    private static let selectorDeviceUID: AudioObjectPropertySelector = 1973036059 // 'uid '
     private static let scopeInput: AudioObjectPropertyScope = 1769172845        // 'inpu'
     private static let scopeGlobal: AudioObjectPropertyScope = 1731677665       // 'glob'
     private static let elementMain: AudioObjectPropertyElement = 0

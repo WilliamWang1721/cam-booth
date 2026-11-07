@@ -548,11 +548,13 @@ final class CameraModel: NSObject, ObservableObject {
 
 extension CameraModel: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        let identifier = photo.settings.uniqueID as Int64
+        // AVCapturePhoto.settings returns the settings object this photo was
+        // captured with; its uniqueID identifies the URL reserved at shutter time.
+        let key: Int64 = photo.settings.uniqueID
         // The delegate runs on AVFoundation's own queue; hop to ours to read the pending names safely.
         queue.async {
             guard let url = self.pendingPhotoURLs.removeValue(
-                    forKey: identifier) else {
+                    forKey: key) else {
                 if let error { self.report("拍照失败：\(error.localizedDescription)") }
                 return
             }
