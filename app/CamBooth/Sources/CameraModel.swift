@@ -52,7 +52,7 @@ final class CameraModel: NSObject, ObservableObject {
     private var recordingStart = Date()
     private var countdownTimer: Timer?
     private var countdownAction: (() -> Void)?
-    private var pendingPhotoURLs: [Int64: URL] = [:]    // read/written on `queue` only
+    private var pendingPhotoURLs: [URL] = []  // FIFO; read/written on `queue` only
     private var reservedNames: Set<String> = []         // names handed out but not yet on disk
 
     // Idle sleep
@@ -394,7 +394,7 @@ final class CameraModel: NSObject, ObservableObject {
         queue.async {
             self.applyMirroringLocked(mirror)
             let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-            self.pendingPhotoURLs[settings.uniqueID] = self.reserveURL(kind: .photo)
+            self.pendingPhotoURLs.append(self.reserveURL(kind: .photo))
             self.photoOutput.capturePhoto(with: settings, delegate: self)
         }
     }
@@ -548,16 +548,15 @@ final class CameraModel: NSObject, ObservableObject {
 
 extension CameraModel: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        // AVCapturePhoto.settings returns the settings object this photo was
-        // captured with; its uniqueID identifies the URL reserved at shutter time.
-        let key: Int64 = photo.settings.uniqueID
         // The delegate runs on AVFoundation's own queue; hop to ours to read the pending names safely.
+        // Captures are issued serially from takePhoto on our session queue and
+        // delegates fire in capture order, so a FIFO gives the right URL.
         queue.async {
-            guard let url = self.pendingPhotoURLs.removeValue(
-                    forKey: key) else {
+            guard !self.pendingPhotoURLs.isEmpty else {
                 if let error { self.report("拍照失败：\(error.localizedDescription)") }
                 return
             }
+            let url = self.pendingPhotoURLs.removeFirst()
             // Every exit path below must release the reservation, or the filename
             // is blocked forever and the map grows per failed photo.
             defer { self.releaseReservation(url) }
